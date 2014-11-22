@@ -9,7 +9,7 @@
    tools:context=".MainActivity"> 
 
    <nxr.tpad.lib.views.FrictionMapView
-   		android:id="@+id/imageView1"
+   		android:id="@+id/frictionView1"
    		android:layout_width="match_parent"
    		android:layout_height="match_parent"
    		android:src="@drawable/ic_launcher" />

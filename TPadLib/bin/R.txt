@@ -1,0 +1,3 @@
+int drawable ic_launcher 0x7f020000
+int xml accessory_filter 0x7f030000
+int xml device_filter 0x7f030001
