@@ -27,9 +27,9 @@
  * or implied.
  */
 
-
 package nxr.tpad.lib;
 
+import ioio.lib.api.AnalogInput;
 import ioio.lib.api.DigitalInput;
 import ioio.lib.api.DigitalOutput;
 import ioio.lib.api.IOIO;
@@ -113,11 +113,13 @@ public abstract class TPadService extends IOIOService {
 		int timeoutMillis = 1000;
 
 		public int tpadConnected = 0;
-		
-		public float tpadScale = 0.6f;
+
+		public float tpadScale = 0.0f;
 
 		@Override
 		public void setup() throws ConnectionLostException, InterruptedException {
+
+			mute_ = ioio_.openDigitalOutput(MUTE, false);
 
 			final ChannelConfigPwmPosition pwmConfig = new Sequencer.ChannelConfigPwmPosition(Sequencer.Clock.CLK_16M, 512, 0, new DigitalOutput.Spec(PWM_OUT)); // 1/(62.5nS*512) = 62500 pwm freq
 
@@ -131,8 +133,6 @@ public abstract class TPadService extends IOIOService {
 			freq = TPadFreq;
 
 			led_ = ioio_.openDigitalOutput(IOIO.LED_PIN, true);
-
-			mute_ = ioio_.openDigitalOutput(MUTE, false);
 
 			spiBus_ = ioio_.openSpiMaster(new DigitalInput.Spec(SPI_MISO), new DigitalOutput.Spec(SPI_MOSI), new DigitalOutput.Spec(SPI_CLK), new DigitalOutput.Spec[] { new DigitalOutput.Spec(
 					SS_FGN_PIN) }, new SpiMaster.Config(Rate.RATE_8M, true, true));
@@ -161,9 +161,9 @@ public abstract class TPadService extends IOIOService {
 				tpadConnected = 1;
 			}
 
-			ioio_.beginBatch();
-
 			synchronized (tpadFrictionBuffer) {
+
+				ioio_.beginBatch();
 
 				if (tpadFrictionBuffer.hasRemaining()) {
 
@@ -210,14 +210,13 @@ public abstract class TPadService extends IOIOService {
 
 				}
 
-			}
+				if (freq != TPadFreq) {
+					sendNewFreq(TPadFreq);
+					freq = TPadFreq;
+				}
 
-			if (freq != TPadFreq) {
-				sendNewFreq(TPadFreq);
-				freq = TPadFreq;
+				ioio_.endBatch();
 			}
-
-			ioio_.endBatch();
 
 			// wait until the end of our refresh period. Ensures more precise timings
 			while ((System.nanoTime()) < (loopTimer + 1.6 * 1000000.0)) {
@@ -233,7 +232,7 @@ public abstract class TPadService extends IOIOService {
 		}
 
 		private void push(float value) throws ConnectionLostException, InterruptedException {
-			
+
 			float reciprocal = (-1f * (value * tpadScale - .5f) + .5f);
 			// float reciprocal = (-1f * (value - .5f) + .5f);
 
@@ -245,6 +244,53 @@ public abstract class TPadService extends IOIOService {
 			pwmCueChannel_.pulseWidth = widthVal;
 
 			sequencer_.push(cue_, cueWidth);
+
+		}
+
+		public void calibrate() throws ConnectionLostException, InterruptedException {
+
+			AnalogInput in = ioio_.openAnalogInput(SENSE);
+
+			int[] testFreqs = new int[50];
+			float[] adcIn = new float[50];
+			float adcAvg = 0;
+			int span = 2000; // span of the calibration range
+			int topFreqIndex = 0;
+			// Turn on TPad
+			float tempScale = looper.tpadScale;
+			looper.tpadScale = 1;
+			push(.9f);
+			
+			for (int i = 0; i < testFreqs.length; i++) {
+
+				testFreqs[i] = (37000 + i * (span) / testFreqs.length);
+				sendNewFreq(testFreqs[i]);
+				Thread.sleep(100);
+				adcAvg = 0;
+				for (int j = 0; j < 100; j++) {
+					adcAvg = adcAvg + in.getVoltage();
+					
+				}
+				adcIn[i] = adcAvg;
+			
+				Log.i(TAG, "ADC read val: " + String.valueOf(adcIn[i]) + " " + String.valueOf((37000 + i * (span) / testFreqs.length)));
+				if (i > 0) {
+					if (adcIn[i] > adcIn[topFreqIndex]) {
+						topFreqIndex = i;
+						// Log.i(TAG, "Top Freq: " + String.valueOf(topFreq));
+					}
+
+				}
+
+			}
+
+			push(0);
+
+			looper.tpadScale = tempScale;
+
+			setFreq(testFreqs[topFreqIndex]);
+
+			in.close();
 
 		}
 
@@ -296,7 +342,7 @@ public abstract class TPadService extends IOIOService {
 	public void setFreq(int i) {
 		TPadFreq = i;
 	}
-	
+
 	public void setScale(float scale) {
 		looper.tpadScale = scale;
 	}
@@ -305,8 +351,8 @@ public abstract class TPadService extends IOIOService {
 
 		byte[] dataBytes = new byte[4];
 
-		Log.i(TAG, "Freq Out: " + String.valueOf(TPadFreq));
-		int freqInt = (int) (TPadFreq / FGN_MCLK * maxFgnOutput); // This is a fraction of the mclk, which is 4MHz
+		Log.i(TAG, "Freq Out: " + String.valueOf(newFreq));
+		int freqInt = (int) (newFreq / FGN_MCLK * maxFgnOutput); // This is a fraction of the mclk, which is 4MHz
 
 		// ________________________5432109876543210________________5432109876543210
 		short lsbData = (short) (0b0100000000000000 | (freqInt & 0b0011111111111111)); // Only take the first 14 bits of the 28 bit number
@@ -511,13 +557,22 @@ public abstract class TPadService extends IOIOService {
 		return looper;
 	}
 
-	final static int[] vibroVals = new int[] {TPadVibration.SINUSOID,TPadVibration.SAWTOOTH, TPadVibration.TRIANGLE, TPadVibration.SQUARE};
+	final static int[] vibroVals = new int[] { TPadVibration.SINUSOID, TPadVibration.SAWTOOTH, TPadVibration.TRIANGLE, TPadVibration.SQUARE };
 
 	class IncomingHandler extends Handler {
 		@Override
 		public void handleMessage(Message msg) {
 			Bundle data;
 			switch (msg.what) {
+
+			case TPadMessage.CALIBRATE_TPAD:
+				try {
+					looper.calibrate();
+				} catch (ConnectionLostException | InterruptedException e1) {
+					Log.i(TAG, "Connection lost during calibration");
+					e1.printStackTrace();
+				}
+				break;
 
 			case TPadMessage.SET_TPAD_FREQ:
 				data = msg.getData();
@@ -530,7 +585,7 @@ public abstract class TPadService extends IOIOService {
 				setScale(data.getFloat("newScale"));
 				Log.i(TAG, "New scale: " + String.valueOf(data.getFloat("newScale")));
 				break;
-				
+
 			case TPadMessage.CHECK_TPAD:
 				try {
 					Message rsp = Message.obtain(null, TPadMessage.CHECK_TPAD);
@@ -629,11 +684,10 @@ public abstract class TPadService extends IOIOService {
 	public int getFreq() {
 		return looper.freq;
 	}
-	
+
 	public float getScale() {
 		return looper.tpadScale;
 	}
-
 
 	@Override
 	public int onStartCommand(Intent intent, int flags, int startId) {
@@ -654,7 +708,8 @@ public abstract class TPadService extends IOIOService {
 
 		super.onStartCommand(intent, flags, startId);
 
-		return START_STICKY;
+		return START_REDELIVER_INTENT;
 	}
 
+	
 }

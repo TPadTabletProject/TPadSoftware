@@ -31,6 +31,7 @@ package com.example.fullscreentexture;
 
 import nxr.tpad.lib.TPad;
 import nxr.tpad.lib.TPadImpl;
+import nxr.tpad.lib.views.DepthMapView;
 import nxr.tpad.lib.views.FrictionMapView;
 import android.app.Activity;
 import android.graphics.Bitmap;

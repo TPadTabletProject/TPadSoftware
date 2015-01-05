@@ -24,26 +24,24 @@
         android:theme="@android:style/Theme.Black" >
         <service
             android:name=".TPadConnectService"
-            android:exported="true"
-            android:process=":tpad" >
+           >
             <intent-filter>
->                
                 <action android:name="TPS" />
             </intent-filter>
         </service>
 
         <uses-library
             android:name="com.android.future.usb.accessory"
-            android:required="false" />
+       />
 
         <activity
             android:name="nxr.tpad.connect.TPadConnectActivity"
             android:configChanges="orientation|keyboardHidden"
             android:exported="true"
             android:label="@string/app_name"
-            android:launchMode="singleTask"
+            android:launchMode="singleTop"
             android:screenOrientation="portrait"
-            android:theme="@android:style/Theme.NoTitleBar.Fullscreen" >
+            >
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 

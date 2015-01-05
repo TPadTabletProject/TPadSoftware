@@ -27,15 +27,16 @@
  * or implied.
  */
 
-
 package nxr.tpad.lib;
 
 import nxr.tpad.lib.consts.TPadMessage;
+import android.annotation.TargetApi;
 import android.app.NotificationManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
@@ -45,13 +46,6 @@ import android.os.RemoteException;
 import android.util.Log;
 
 public class TPadImpl implements TPad {
-
-	// SINUSOID, SQUARE, SAWTOOTH, TRIANGLE, RANDOM
-	public final int iSINUSOID = 1;
-	public final int iSQUARE = 2;
-	public final int iSAWTOOTH = 3;
-	public final int iTRIANGLE = 4;
-	public final int iRANDOM = 5;
 
 	Messenger myService = null;
 	public boolean isBound;
@@ -67,12 +61,14 @@ public class TPadImpl implements TPad {
 	public TPadImpl(Context context) {
 		mContext = context;
 
-		Intent intent = new Intent();
-		intent.setAction("TPS");
+		Intent intent = new Intent("TPS");
+		
+		//mContext.startService(intent);
+				
 		mContext.bindService(intent, myConnection, Context.BIND_AUTO_CREATE);
 
 		mResponseHandler = new ResponseHandler();
-		
+
 	}
 
 	public class ResponseHandler extends Handler {
@@ -103,6 +99,23 @@ public class TPadImpl implements TPad {
 		}
 	}
 
+	public void calibrate() {
+		if (!isBound)
+			return;
+		Message msg = Message.obtain(null, TPadMessage.CALIBRATE_TPAD);
+		msg.replyTo = new Messenger(mResponseHandler);
+		Bundle bundle = new Bundle();
+		bundle.putInt("cal", TPadMessage.CALIBRATE_TPAD);
+
+		msg.setData(bundle);
+
+		try {
+			myService.send(msg);
+		} catch (RemoteException e) {
+			e.printStackTrace();
+		}
+	}
+
 	public void refreshFreq() {
 		if (!isBound)
 			return;
@@ -119,7 +132,7 @@ public class TPadImpl implements TPad {
 			e.printStackTrace();
 		}
 	}
-	
+
 	public void refreshScale() {
 		if (!isBound)
 			return;
@@ -152,9 +165,9 @@ public class TPadImpl implements TPad {
 		} catch (RemoteException e) {
 			e.printStackTrace();
 		}
-		//showNotification();
+		// showNotification();
 	}
-	
+
 	@Override
 	public void sendNewScale(float scale) {
 		if (!isBound)
@@ -177,7 +190,7 @@ public class TPadImpl implements TPad {
 	public boolean getBound() {
 		return isBound;
 	}
-	
+
 	@Override
 	public boolean getTpadStatus() {
 		if (!isBound)
@@ -222,14 +235,14 @@ public class TPadImpl implements TPad {
 			localFreq = f;
 		}
 	}
-	
+
 	public void setLocalScale(float s) {
 		synchronized (localScale) {
 			localScale = s;
 		}
-		
+
 	}
-	
+
 	@Override
 	public float getLocalScale() {
 		float s;
@@ -238,9 +251,6 @@ public class TPadImpl implements TPad {
 		}
 		return s;
 	}
-
-	
-	
 
 	public void sendFriction(float f) {
 		// Log.i("tPhone", "send TPad: " + f);
@@ -265,7 +275,7 @@ public class TPadImpl implements TPad {
 	}
 
 	public void sendFrictionBuffer(float[] buffArray) {
-		Log.i("TPad2", "SendTPadBuffer calling event");
+		//Log.i("TPad2", "SendTPadBuffer calling event");
 		if (!isBound)
 			return;
 		Message msg = Message.obtain(null, TPadMessage.SEND_TPAD_BUFFER);
@@ -339,8 +349,7 @@ public class TPadImpl implements TPad {
 
 	@Override
 	public void turnOff() {
-		sendFriction(0f);		
+		sendFriction(0f);
 	}
-
 
 }

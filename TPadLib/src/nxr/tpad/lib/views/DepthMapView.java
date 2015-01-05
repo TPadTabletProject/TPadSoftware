@@ -27,7 +27,6 @@
  * or implied.
  */
 
-
 package nxr.tpad.lib.views;
 
 import org.opencv.android.BaseLoaderCallback;
@@ -56,7 +55,7 @@ public class DepthMapView extends View {
 
 	private String TAG = new String("DepthMapView");
 	private int height, width;
-	
+
 	private TPad mTpad;
 	private final Context mainContext;
 
@@ -64,11 +63,12 @@ public class DepthMapView extends View {
 	private float scaleFactor;
 	private Matrix scaleMat;
 
+	private Mat gradMatx;
+	private Mat gradMaty;
+
 	private boolean openCvLoaded = false;
 
 	private static volatile Bitmap dataBitmap = null;
-	private static volatile Bitmap gradXBitmap = null;
-	private static volatile Bitmap gradYBitmap = null;
 
 	private VelocityTracker vTracker;
 	private static float vy, vx;
@@ -89,20 +89,16 @@ public class DepthMapView extends View {
 		dataPaint.setColor(Color.DKGRAY);
 		dataPaint.setAntiAlias(true);
 
-		scaleMat = new Matrix();
-		scaleFactor = 1;
-		scaleMat.postScale(1 / scaleFactor, 1 / scaleFactor);
-
 		Log.i(TAG, "Trying to load OpenCV library");
 		if (!OpenCVLoader.initAsync(OpenCVLoader.OPENCV_VERSION_2_4_7, mainContext, mOpenCVCallBack)) {
 			Log.e(TAG, "Cannot connect to OpenCV Manager");
 		}
 
 	}
-	
-	public void setTpad(TPad tpad){
+
+	public void setTpad(TPad tpad) {
 		mTpad = tpad;
-		
+
 	}
 
 	private BaseLoaderCallback mOpenCVCallBack = new BaseLoaderCallback(getContext()) {
@@ -132,45 +128,39 @@ public class DepthMapView extends View {
 
 	private void computeGradients() {
 
-		gradXBitmap = null;
-		gradYBitmap = null;
-
-		gradXBitmap = dataBitmap.copy(Bitmap.Config.ARGB_8888, true);
-		gradYBitmap = dataBitmap.copy(Bitmap.Config.ARGB_8888, true);
-
 		double delta = 127.5;
 		Mat tempMat = new Mat(dataBitmap.getHeight(), dataBitmap.getWidth(), CvType.CV_8UC4);
-		Mat gradMatx = new Mat(dataBitmap.getHeight(), dataBitmap.getWidth(), CvType.CV_8UC4);
-		Mat gradMaty = new Mat(dataBitmap.getHeight(), dataBitmap.getWidth(), CvType.CV_8UC4);
+		gradMatx = new Mat(dataBitmap.getHeight(), dataBitmap.getWidth(), CvType.CV_8UC4);
+		gradMaty = new Mat(dataBitmap.getHeight(), dataBitmap.getWidth(), CvType.CV_8UC4);
 		Utils.bitmapToMat(dataBitmap, tempMat);
 		Imgproc.cvtColor(tempMat, tempMat, Imgproc.COLOR_RGBA2GRAY);
 		Utils.matToBitmap(tempMat, dataBitmap);
 
 		// x direction gradient
 		Imgproc.Sobel(tempMat, gradMatx, tempMat.depth(), 1, 0, 5, .5, delta);
-		//Imgproc.GaussianBlur(gradMatx, gradMatx, new Size(7, 7), 10);
+		// Imgproc.GaussianBlur(gradMatx, gradMatx, new Size(7, 7), 10);
 		// Imgproc.GaussianBlur(gradMatx, gradMatx, new Size(11, 11), 20);
-		Utils.matToBitmap(gradMatx, gradXBitmap);
+		// Utils.matToBitmap(gradMatx, gradXBitmap);
 
 		// y direction gradient
 		Imgproc.Sobel(tempMat, gradMaty, tempMat.depth(), 0, 1, 5, .5, delta);
-		//Imgproc.GaussianBlur(gradMaty, gradMaty, new Size(7, 7), 10);
+		// Imgproc.GaussianBlur(gradMaty, gradMaty, new Size(7, 7), 10);
 		// Imgproc.GaussianBlur(gradMaty, gradMaty, new Size(11, 11), 20);
-		Utils.matToBitmap(gradMaty, gradYBitmap);
+		// Utils.matToBitmap(gradMaty, gradYBitmap);
 	}
 
 	private void resetScaleFactor() {
-		scaleMat = null;
-		scaleMat = new Matrix();
 		scaleFactor = dataBitmap.getWidth() / (float) width;
-		scaleMat.postScale(1 / scaleFactor, 1 / scaleFactor);
 	}
 
 	@Override
 	protected void onDraw(Canvas canvas) {
 		super.onDraw(canvas);
 		canvas.drawColor(Color.MAGENTA);
-		canvas.drawBitmap(dataBitmap, scaleMat, dataPaint);
+		resetScaleFactor();
+		Bitmap tempBitmap = Bitmap.createScaledBitmap(dataBitmap, (int) (dataBitmap.getWidth() / scaleFactor), (int) (dataBitmap.getHeight() / scaleFactor), false);
+		canvas.drawBitmap(tempBitmap, 0, 0, dataPaint);
+		tempBitmap.recycle();
 	}
 
 	@Override
@@ -262,9 +252,15 @@ public class DepthMapView extends View {
 				y = dataBitmap.getHeight() - 1;
 			} else if (y < 0)
 				y = 0;
-
-			float getX = pixelToFriction(gradXBitmap.getPixel(x, y));
-			float getY = pixelToFriction(gradYBitmap.getPixel(x, y));
+			
+			double[] vals = new double[1];
+			vals = gradMatx.get(y, x);
+			int colorint = (int) vals[0];
+			float getX = (colorint)/255;
+			
+			vals = gradMaty.get(y, x);
+			colorint = (int) vals[0];
+			float getY = (colorint)/255;
 
 			vAvgMag = (float) Math.sqrt(vx * vx + vy * vy);
 			vAvgx = (float) (vx / vAvgMag);
@@ -272,18 +268,13 @@ public class DepthMapView extends View {
 
 			float scale = (float) (Math.sqrt(2.) / 2.);
 
-			friction = scale * (-1f*((getX - .5f) * vAvgx + (getY - .5f) * vAvgy) )+ .5f;
+			friction = scale * (-1f * ((getX - .5f) * vAvgx + (getY - .5f) * vAvgy)) + .5f;
 			// friction = (float) (-1 * ((vAvgx * (getX - .5f) + vAvgy * (getY - .5f)) * Math.sqrt(2.) / 2.) + .5);
-			//Log.i(TAG, "Friction level: " + String.valueOf(friction));
+			// Log.i(TAG, "Friction level: " + String.valueOf(friction));
 			predictedPixels[i] = friction;
 		}
 
 	}
 
-	private float pixelToFriction(int pixel) {
-		float[] hsv = new float[3];
-		Color.colorToHSV(pixel, hsv);
-		return hsv[2];
-	}
 
 }

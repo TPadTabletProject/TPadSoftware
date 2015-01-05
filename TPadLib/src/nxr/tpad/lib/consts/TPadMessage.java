@@ -44,5 +44,6 @@ public final class TPadMessage {
 	public final static int SET_TPAD_FREQ = 7;
 	public final static int SET_TPAD_SCALE = 8;
 	public final static int GET_TPAD_SCALE = 9;
+	public final static int CALIBRATE_TPAD = 10;
 	
 }

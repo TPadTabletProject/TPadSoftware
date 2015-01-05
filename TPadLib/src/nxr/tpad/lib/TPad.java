@@ -130,6 +130,8 @@ public interface TPad {
 	 */
 	public void sendNewFreq(int f);
 	
+	public void calibrate();
+	
 	public boolean getTpadStatus();
 
 	public boolean getBound();

@@ -27,13 +27,15 @@
  * or implied.
  */
 
-
 package nxr.tpad.connect;
 
 import nxr.tpad.lib.TPad;
 import nxr.tpad.lib.TPadImpl;
+import nxr.tpad.lib.TPadService;
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.util.Log;
@@ -53,13 +55,16 @@ public class TPadConnectActivity extends Activity implements Runnable {
 	private TextView mHeadText;
 	private TextView mServiceStatusText, mTpadStatusText, mFreqText, mScaleText;
 	public EditText mFreqEdit;
-	private Button mFreqButton;
+	private Button mFreqButton, mCalButton;
 	private SeekBar mScaleBar;
-	
+
+	private String freqPreferenceKey = "Tpad Freq";
+	private String scalePreferenceKey = "Tpad Scale";
+
 	private String TAG = "TPadConnectAct";
 	private boolean workerRunning = false;
 	private Thread mWorker;
-	
+
 	private float localProgress = 0;
 
 	public TPad mTpad;
@@ -68,13 +73,18 @@ public class TPadConnectActivity extends Activity implements Runnable {
 	protected void onCreate(Bundle savedInstanceState) {
 		setContentView(R.layout.activity_tpad_connect);
 
-		// Intent startIntent = new Intent();
-		// startIntent.setAction("TPS");
+		Intent intent = new Intent(this, TPadConnectService.class);
+		startService(intent);
+
 		mTpad = new TPadImpl(this);
 
-		if (!mTpad.getBound()) {
-			startService(new Intent(this, TPadConnectService.class));
-		}
+		SharedPreferences sharedPref = this.getPreferences(Context.MODE_PRIVATE);
+		int mStoredFreq = sharedPref.getInt(freqPreferenceKey, 0);
+		float mStoredScale = sharedPref.getFloat(scalePreferenceKey, 0);
+		Log.i(TAG, "Pref Int: " + String.valueOf(mStoredFreq));
+
+		mTpad.sendNewFreq(mStoredFreq);
+		mTpad.sendNewScale(mStoredScale);
 
 		mHeadText = (TextView) findViewById(R.id.headText);
 		mServiceStatusText = (TextView) findViewById(R.id.serviceStatusText);
@@ -84,6 +94,7 @@ public class TPadConnectActivity extends Activity implements Runnable {
 		mFreqButton = (Button) findViewById(R.id.freqButton);
 		mScaleText = (TextView) findViewById(R.id.scaleText);
 		mScaleBar = (SeekBar) findViewById(R.id.scaleBar);
+		// mCalButton = (Button) findViewById(R.id.calButton);
 
 		mHeadText.setText("TPad Connection Manager");
 
@@ -92,6 +103,11 @@ public class TPadConnectActivity extends Activity implements Runnable {
 				if ((event != null && (event.getKeyCode() == KeyEvent.KEYCODE_ENTER)) || (actionId == EditorInfo.IME_ACTION_DONE)) {
 					int newFreq = Integer.parseInt(mFreqEdit.getText().toString());
 					mTpad.sendNewFreq(newFreq);
+
+					SharedPreferences sharedPref = getPreferences(Context.MODE_PRIVATE);
+					SharedPreferences.Editor editor = sharedPref.edit();
+					editor.putInt(freqPreferenceKey, newFreq);
+					editor.commit();
 				}
 				return false;
 			}
@@ -105,35 +121,52 @@ public class TPadConnectActivity extends Activity implements Runnable {
 				int newFreq = Integer.parseInt(mFreqEdit.getText().toString());
 				mTpad.sendNewFreq(newFreq);
 
+				SharedPreferences sharedPref = getPreferences(Context.MODE_PRIVATE);
+				SharedPreferences.Editor editor = sharedPref.edit();
+				editor.putInt(freqPreferenceKey, newFreq);
+				editor.commit();
 			}
 
 		});
-		
+
 		mScaleBar.setMax(100);
-		
-		mScaleBar.setOnSeekBarChangeListener(new OnSeekBarChangeListener(){
+
+		mScaleBar.setOnSeekBarChangeListener(new OnSeekBarChangeListener() {
 
 			@Override
 			public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
 				localProgress = (float) progress;
-				
+
 			}
 
 			@Override
 			public void onStartTrackingTouch(SeekBar seekBar) {
 				// TODO Auto-generated method stub
-				
+
 			}
 
 			@Override
 			public void onStopTrackingTouch(SeekBar seekBar) {
-				mTpad.sendNewScale(localProgress/(float)mScaleBar.getMax());
-				Log.i(TAG, "New scale: " + String.valueOf(localProgress/(float)mScaleBar.getMax()));
-				
+				mTpad.sendNewScale(localProgress / (float) mScaleBar.getMax());
+				Log.i(TAG, "New scale: " + String.valueOf(localProgress / (float) mScaleBar.getMax()));
+				SharedPreferences sharedPref = getPreferences(Context.MODE_PRIVATE);
+				SharedPreferences.Editor editor = sharedPref.edit();
+				editor.putFloat(scalePreferenceKey, localProgress / (float) mScaleBar.getMax());
+				editor.commit();
+
 			}
-			
-			
+
 		});
+		/*
+		 * mCalButton.setOnClickListener(new OnClickListener(){
+		 * 
+		 * @Override public void onClick(View v) { //mTpad.calibrate();
+		 * 
+		 * }
+		 * 
+		 * 
+		 * });
+		 */
 
 		super.onCreate(savedInstanceState);
 
@@ -157,10 +190,12 @@ public class TPadConnectActivity extends Activity implements Runnable {
 		}
 
 		mFreqText.setText(String.valueOf(mTpad.getLocalFreq()) + " Hz");
-		mScaleText.setText(String.valueOf(mTpad.getLocalScale()*100f) + "%");
-		
+		mScaleText.setText(String.valueOf(mTpad.getLocalScale() * 100f) + "%");
+		mScaleBar.setProgress((int) (mTpad.getLocalScale() * 100f));
+
 		Log.i(TAG, "Scale value: " + String.valueOf(mTpad.getLocalScale()));
 	}
+
 	@Override
 	protected void onResume() {
 		workerRunning = true;
@@ -202,11 +237,27 @@ public class TPadConnectActivity extends Activity implements Runnable {
 			runOnUiThread(new Runnable() {
 				@Override
 				public void run() {
-					mTpad.refreshFreq();
-					mTpad.refreshScale();
-					mTpad.getTpadStatus();
-					refreshStatusText();
+					if (mTpad.getBound()) {
+						mTpad.refreshFreq();
+						mTpad.refreshScale();
+						mTpad.getTpadStatus();
 
+						SharedPreferences sharedPref = getPreferences(Context.MODE_PRIVATE);
+						int mStoredFreq = sharedPref.getInt(freqPreferenceKey, 0);
+						float mStoredScale = sharedPref.getFloat(scalePreferenceKey, 0);
+
+						if (mTpad.getLocalFreq() != mStoredFreq) {
+							mTpad.sendNewFreq(mStoredFreq);
+							// mStoredFreq = mTpad.getLocalFreq();
+						}
+
+						if (mTpad.getLocalScale() != mStoredScale) {
+							mTpad.sendNewScale(mStoredScale);
+						}
+
+						refreshStatusText();
+
+					}
 				}
 			});
 
