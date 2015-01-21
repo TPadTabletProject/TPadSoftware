@@ -71,6 +71,8 @@ public final class R {
         public static final int AppTheme=0x7f070001;
     }
     public static final class xml {
-        public static final int usb_device_filter=0x7f040000;
+        public static final int accessory_filter=0x7f040000;
+        public static final int device_filter=0x7f040001;
+        public static final int usb_device_filter=0x7f040002;
     }
 }

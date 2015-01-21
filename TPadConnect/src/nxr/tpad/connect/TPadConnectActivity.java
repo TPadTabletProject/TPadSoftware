@@ -94,7 +94,7 @@ public class TPadConnectActivity extends Activity implements Runnable {
 		mFreqButton = (Button) findViewById(R.id.freqButton);
 		mScaleText = (TextView) findViewById(R.id.scaleText);
 		mScaleBar = (SeekBar) findViewById(R.id.scaleBar);
-		// mCalButton = (Button) findViewById(R.id.calButton);
+		mCalButton = (Button) findViewById(R.id.calButton);
 
 		mHeadText.setText("TPad Connection Manager");
 
@@ -157,16 +157,16 @@ public class TPadConnectActivity extends Activity implements Runnable {
 			}
 
 		});
-		/*
-		 * mCalButton.setOnClickListener(new OnClickListener(){
-		 * 
-		 * @Override public void onClick(View v) { //mTpad.calibrate();
-		 * 
-		 * }
-		 * 
-		 * 
-		 * });
-		 */
+
+		mCalButton.setOnClickListener(new OnClickListener() {
+
+			@Override
+			public void onClick(View v) {
+				mTpad.calibrate();
+
+			}
+
+		});
 
 		super.onCreate(savedInstanceState);
 
@@ -248,7 +248,8 @@ public class TPadConnectActivity extends Activity implements Runnable {
 
 						if (mTpad.getLocalFreq() != mStoredFreq) {
 							mTpad.sendNewFreq(mStoredFreq);
-							// mStoredFreq = mTpad.getLocalFreq();
+							//mStoredFreq = mTpad.getLocalFreq();
+														
 						}
 
 						if (mTpad.getLocalScale() != mStoredScale) {

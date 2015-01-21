@@ -254,7 +254,7 @@ public abstract class TPadService extends IOIOService {
 			int[] testFreqs = new int[50];
 			float[] adcIn = new float[50];
 			float adcAvg = 0;
-			int span = 2000; // span of the calibration range
+			int span = 3000; // span of the calibration range
 			int topFreqIndex = 0;
 			// Turn on TPad
 			float tempScale = looper.tpadScale;

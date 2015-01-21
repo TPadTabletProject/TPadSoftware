@@ -47,26 +47,26 @@ public class FrictionMapView extends View {
 	private int height, width;
 
 	// Local reference to TPad object
-	private TPad mTpad;
+	public TPad mTpad;
 
 	// Holders of Haptic data
-	private Bitmap dataBitmap;
-	private Paint dataPaint;
+	public Bitmap dataBitmap;
+	public Paint dataPaint;
 	
 	// Scale factor for shrinking incoming bitmaps to proper size of the view class
 	private float scaleFactor;
 
 	// Android velocity tracking object, used in predicting finger position
-	private VelocityTracker vTracker;
+	public VelocityTracker vTracker;
 	
-	// Private velocity and position variables of the finger. Get updated at approx 60Hz when the user is touching
-	private static float vy, vx;
-	private static float py, px;
+	// Velocity and position variables of the finger. Get updated at approx 60Hz when the user is touching
+	public static float vy, vx;
+	public static float py, px;
 
 	// Prediction "Horizon", that is the number of samples needed to extrapolate finger position until the next position is taken
-	private static final int PREDICT_HORIZON = (int) (TPadService.OUTPUT_SAMPLE_RATE * (.020f)); // 125 samples, 20ms @ sample rate output
+	public static final int PREDICT_HORIZON = (int) (TPadService.OUTPUT_SAMPLE_RATE * (.020f)); // 125 samples, 20ms @ sample rate output
 	// Array for holding the extrapolated pixel values
-	private static float[] predictedPixels = new float[PREDICT_HORIZON];
+	public static float[] predictedPixels = new float[PREDICT_HORIZON];
 
 	// Main Constructor for FrictionMapView
 	public FrictionMapView(Context context, AttributeSet attrs) {
@@ -205,7 +205,7 @@ public class FrictionMapView extends View {
 	}
 
 	// Main extrapolation algorithm used to calculate upsampled friction values to the TPad
-	private void predictPixels() {
+	public void predictPixels() {
 		// Local friction values
 		float friction;
 		
@@ -248,7 +248,7 @@ public class FrictionMapView extends View {
 
 	
 	// Main mapping to go from a pixel color to a friction value. OVERRIDE THIS FUNCTION FOR NEW MAPPINGS FROM COLOR TO FRICTION
-	private float pixelToFriction(int pixel) {
+	public float pixelToFriction(int pixel) {
 		// Setup a Hue, Saturation, Value matrix
 		float[] hsv = new float[3];
 		

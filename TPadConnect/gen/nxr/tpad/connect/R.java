@@ -26,7 +26,8 @@ public final class R {
         public static final int testimage=0x7f020004;
     }
     public static final class id {
-        public static final int action_settings=0x7f09000c;
+        public static final int action_settings=0x7f09000d;
+        public static final int calButton=0x7f09000c;
         public static final int freqButton=0x7f090008;
         public static final int freqEdit=0x7f090007;
         public static final int freqText=0x7f090006;

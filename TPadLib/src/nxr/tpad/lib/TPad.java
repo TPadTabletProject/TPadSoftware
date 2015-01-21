@@ -1,5 +1,5 @@
 /*
- * Copyright 2014 Craig Shultz. All rights reserved.
+ * Copyright 2014 TPad Tablet Project. All rights reserved.
  *
  *
  * Redistribution and use in source and binary forms, with or without modification, are

@@ -6,7 +6,8 @@ int drawable spacialgrad 0x7f020001
 int drawable testdepth 0x7f020002
 int drawable testdepthbars 0x7f020003
 int drawable testimage 0x7f020004
-int id action_settings 0x7f09000c
+int id action_settings 0x7f09000d
+int id calButton 0x7f09000c
 int id freqButton 0x7f090008
 int id freqEdit 0x7f090007
 int id freqText 0x7f090006
