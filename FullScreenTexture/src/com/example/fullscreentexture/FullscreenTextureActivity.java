@@ -37,6 +37,7 @@ import android.app.Activity;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Bundle;
+
 import com.example.fullscreentexture.R;
 
 public class FullscreenTextureActivity extends Activity {
@@ -64,10 +65,14 @@ public class FullscreenTextureActivity extends Activity {
 		fricView.setTpad(mTpad);
 		
 		// Load in the image stored in the drawables folder
-		Bitmap defaultBitmap = BitmapFactory.decodeResource(getResources(), R.drawable.demo);
+		Bitmap defaultBitmap = BitmapFactory.decodeResource(getResources(), R.drawable.filter);
 		
 		// Set the friction data bitmap to the test image
 		fricView.setDataBitmap(defaultBitmap);
+		defaultBitmap.recycle();
+				
+		fricView.setDisplayShowing(false);
+				
 	
 	}
 

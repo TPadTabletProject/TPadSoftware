@@ -27,9 +27,9 @@
  * or implied.
  */
 
-
 package nxr.tpad.lib.views;
 
+import ioio.lib.spi.Log;
 import nxr.tpad.lib.TPad;
 import nxr.tpad.lib.TPadService;
 import android.content.Context;
@@ -43,112 +43,185 @@ import android.view.VelocityTracker;
 import android.view.View;
 
 public class FrictionMapView extends View {
-	// Local Height and width of view class. These change dynamically when the view is resized by the system
+	// Local Height and width of view class. These change dynamically when the
+	// view is resized by the system
 	private int height, width;
+
+	private boolean displayShowing = true;
+	private boolean dataDisplayed = true;
 
 	// Local reference to TPad object
 	public TPad mTpad;
 
 	// Holders of Haptic data
 	public Bitmap dataBitmap;
+	public Bitmap displayBitmap;
 	public Paint dataPaint;
-	
-	// Scale factor for shrinking incoming bitmaps to proper size of the view class
-	private float scaleFactor;
+
+	// Scale factor for shrinking incoming bitmaps to proper size of the view
+	// class
+	private float hapticScaleFactor;
+	private float visualScaleFactor;
 
 	// Android velocity tracking object, used in predicting finger position
 	public VelocityTracker vTracker;
-	
-	// Velocity and position variables of the finger. Get updated at approx 60Hz when the user is touching
+
+	// Velocity and position variables of the finger. Get updated at approx 60Hz
+	// when the user is touching
 	public static float vy, vx;
 	public static float py, px;
 
-	// Prediction "Horizon", that is the number of samples needed to extrapolate finger position until the next position is taken
-	public static final int PREDICT_HORIZON = (int) (TPadService.OUTPUT_SAMPLE_RATE * (.020f)); // 125 samples, 20ms @ sample rate output
+	// Prediction "Horizon", that is the number of samples needed to extrapolate
+	// finger position until the next position is taken
+	public static final int PREDICT_HORIZON = (int) (TPadService.OUTPUT_SAMPLE_RATE * (.020f)); // 125
+																								// samples,
+																								// 20ms
+																								// @
+																								// sample
+																								// rate
+																								// output
 	// Array for holding the extrapolated pixel values
 	public static float[] predictedPixels = new float[PREDICT_HORIZON];
+
+	String TAG = "FrictionMapView";
 
 	// Main Constructor for FrictionMapView
 	public FrictionMapView(Context context, AttributeSet attrs) {
 		super(context, attrs);
-		
-		// Set default bitmap to 10x10 square, just so we don't get null pointer exceptions
-		Bitmap defaultBitmap = Bitmap.createBitmap(10, 10, Bitmap.Config.ARGB_8888);
-		setDataBitmap(defaultBitmap);
 
-		// Set some graphic properties flags of the dataBitmap since it will also be shown to the screen
+		height = 10;
+		width = 10;
+		
+		// Set default bitmap to 10x10 square, just so we don't get null pointer
+		// exceptions
+		Bitmap defaultBitmap = Bitmap.createBitmap(10, 10,Bitmap.Config.ARGB_8888);
+
+		setDataBitmap(defaultBitmap);
+		setDisplayBitmap(defaultBitmap);
+
+		defaultBitmap.recycle();
+
+		// Set some graphic properties flags of the dataBitmap since it will
+		// also be shown to the screen
 		dataPaint = new Paint();
-		dataPaint.setColor(Color.DKGRAY);
+		dataPaint.setColor(Color.MAGENTA);
 		dataPaint.setAntiAlias(true);
 
-
 	}
-	
+
 	// Called by creating activity to initialize the local TPad reference object
-	public void setTpad(TPad tpad){
-		mTpad = tpad;		
+	public void setTpad(TPad tpad) {
+		mTpad = tpad;
 	}
 
-	// Called by outside class to set a new bitmap as the haptic data for this view
+	// Called by outside class to set a new bitmap as the haptic data for this
+	// view
 	public void setDataBitmap(Bitmap bmp) {
-		
-		// Create new bitmap from a copy of the reference. This ensures the reference copy won't be used, and it can then be destroyed.
+
+		hapticScaleFactor = bmp.getWidth() / (float) width;
+		// Create new bitmap from a copy of the reference. This ensures the
+		// reference copy won't be used, and it can then be destroyed.
 		dataBitmap = null;
 		dataBitmap = bmp.copy(Bitmap.Config.ARGB_8888, true);
 		
-		// Invalidate calls the onDraw() function of the view class, when will draw the newly copied dataBitmap to the screen
 		invalidate();
 
 	}
 
-	// Called to reset the local scale factor.
-	private void resetScaleFactor() {		
-		scaleFactor = dataBitmap.getWidth() / (float) width;
+	public void setDisplayBitmap(Bitmap bmp) {
+
+		visualScaleFactor = bmp.getWidth() / (float) width;
+		// Create new bitmap from a copy of the reference. This ensures the
+		// reference copy won't be used, and it can then be destroyed.
+		displayBitmap = null;
+		displayBitmap = bmp.copy(Bitmap.Config.ARGB_4444, true);
+
+		// Invalidate calls the onDraw() function of the view class, when will
+		// draw the newly copied dataBitmap to the screen
+		invalidate();
+
+	}
+	
+	private void resetScaleFactors(){
+		hapticScaleFactor = dataBitmap.getWidth() / (float) width;
+		visualScaleFactor = displayBitmap.getWidth() / (float) width;
 	}
 
-	// Main method for updating graphics on the screen. Only gets called at the beginning, or when a new dataBitmap is loaded
+	public void setDisplayShowing(boolean bool) {
+		displayShowing = bool;
+		invalidate();
+	}
+
+	public boolean isDisplayShowing() {
+		return displayShowing;
+	}
+
+	public void setDataDisplayed(boolean bool) {
+		dataDisplayed = bool;
+		invalidate();
+
+	}
+
+	public boolean isDataDisplayed() {
+		return dataDisplayed;
+	}
+
+	// Main method for updating graphics on the screen. Only gets called at the
+	// beginning, or when a new dataBitmap is loaded
 	@Override
 	protected void onDraw(Canvas canvas) {
 		super.onDraw(canvas);
-		// Draw a background color in case of overdraw on the screen. Mostly for error checking purposes
-		canvas.drawColor(Color.MAGENTA);
-		
-		// Ensure the scale factor has been properly set
-		resetScaleFactor();
-		
-		// Create a temporary bitmap that is a properly scaled version of the data Bitmap
-		Bitmap tempBitmap = Bitmap.createScaledBitmap(dataBitmap, (int)(dataBitmap.getWidth()/scaleFactor), (int)(dataBitmap.getHeight()/scaleFactor), false);
-		
-		// Draw visual bitmap to screen
-		canvas.drawBitmap(tempBitmap, 0,0, dataPaint);
-		
-		// Get rid of visual version to save space in memory
-		tempBitmap.recycle();
+		// Draw a background color in case of overdraw on the screen. Mostly for
+		// error checking purposes
+		canvas.drawColor(Color.DKGRAY);
+
+		if (displayShowing) {
+			if (dataDisplayed) {
+				drawScaledBitmap(dataBitmap, canvas, hapticScaleFactor);
+			} else {
+				drawScaledBitmap(displayBitmap, canvas, visualScaleFactor);
+			}
+		}
 	}
 
-	// Method getting called when the view changes dimentions. Used in the background for most purposes.
+	private void drawScaledBitmap(Bitmap bit, Canvas can, float factor) {
+
+		Log.i(TAG, "Factor:" + String.valueOf(factor) + " Bitwidth:"+ String.valueOf(bit.getWidth()));
+
+		// Create a temporary bitmap that is a properly scaled version of the
+		// data Bitmap
+		Bitmap tempBitmap = Bitmap.createScaledBitmap(bit,(int) (bit.getWidth() / factor),(int) (bit.getHeight() / factor), false);
+		can.drawBitmap(tempBitmap, 0, 0, dataPaint);
+
+		tempBitmap.recycle();
+
+	}
+	// Method getting called when the view changes dimentions. Used in the
+	// background for most purposes.
 	@Override
 	protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
 		width = MeasureSpec.getSize(widthMeasureSpec);
 		height = MeasureSpec.getSize(heightMeasureSpec);
-		resetScaleFactor();
-		invalidate();
+		Log.i(TAG, "New Measure: " +String.valueOf(width)+"w "+String.valueOf(height)+"h");
+		
+		resetScaleFactors();		
 		super.onMeasure(widthMeasureSpec, heightMeasureSpec);
 	}
 
-	// Main Touch even method. Gets called whenever Android reports a new touch event.
+	// Main Touch even method. Gets called whenever Android reports a new touch
+	// event.
 	@Override
 	public boolean onTouchEvent(MotionEvent event) {
-		
+
 		// Switch by which type of event occured
 		switch (event.getActionMasked()) {
 
 		// Case where user first touches down on the screen
 		case MotionEvent.ACTION_DOWN:
-			
+
 			// Get position coordinates, and scale for proper dataBitmap size
-			px = event.getX() * scaleFactor;
-			py = event.getY() * scaleFactor;
+			px = event.getX() * hapticScaleFactor;
+			py = event.getY() * hapticScaleFactor;
 
 			// Reset velocities to zero
 			vx = 0;
@@ -160,17 +233,17 @@ public class FrictionMapView extends View {
 			} else {
 				vTracker.clear();
 			}
-			
+
 			// Add first event to tracker
 			vTracker.addMovement(event);
 
 			break;
 
 		case MotionEvent.ACTION_MOVE:
-			
+
 			// Get position coordinates, and scale for proper dataBitmap size
-			px = event.getX() * scaleFactor;
-			py = event.getY() * scaleFactor;
+			px = event.getX() * hapticScaleFactor;
+			py = event.getY() * hapticScaleFactor;
 
 			// Add new motion even to the velocity tracker
 			vTracker.addMovement(event);
@@ -179,12 +252,14 @@ public class FrictionMapView extends View {
 			vTracker.computeCurrentVelocity(1);
 
 			// Get computed velocities, and scale them appropriately
-			vx = vTracker.getXVelocity() * scaleFactor;
-			vy = vTracker.getYVelocity() * scaleFactor;
+			vx = vTracker.getXVelocity() * hapticScaleFactor;
+			vy = vTracker.getYVelocity() * hapticScaleFactor;
 
-			// Call prediction algorithm below. This function computes the proper extrapolation of friction values and automatically updates predictedPixels with these values
+			// Call prediction algorithm below. This function computes the
+			// proper extrapolation of friction values and automatically updates
+			// predictedPixels with these values
 			predictPixels();
-			
+
 			// Send the predicted values to the tpad as an array
 			mTpad.sendFrictionBuffer(predictedPixels);
 
@@ -204,58 +279,66 @@ public class FrictionMapView extends View {
 		return true;
 	}
 
-	// Main extrapolation algorithm used to calculate upsampled friction values to the TPad
+	// Main extrapolation algorithm used to calculate upsampled friction values
+	// to the TPad
 	public void predictPixels() {
 		// Local friction values
 		float friction;
-		
+
 		// Local x,y values, based on most recent px, py
 		int x = (int) px;
 		int y = (int) py;
-		
-		// A frequency scaling factor to ensure we are producing the correct number of samples to be played back
-		float freqScaleFactor = (float) (1/(TPadService.OUTPUT_SAMPLE_RATE/1000.));
 
-		// Main extrapolation loop. This is where the extrapolated data is produced 
+		// A frequency scaling factor to ensure we are producing the correct
+		// number of samples to be played back
+		float freqScaleFactor = (float) (1 / (TPadService.OUTPUT_SAMPLE_RATE / 1000.));
+
+		// Main extrapolation loop. This is where the extrapolated data is
+		// produced
 		for (int i = 0; i < predictedPixels.length; i++) {
 
 			// 1st order hold in x direction
-			x = (int) (px + vx * i * freqScaleFactor );
-			
-			// Ensure we are not going off the edge of the bitmap with our extrapolated point
+			x = (int) (px + vx * i * freqScaleFactor);
+
+			// Ensure we are not going off the edge of the bitmap with our
+			// extrapolated point
 			if (x >= dataBitmap.getWidth()) {
 				x = dataBitmap.getWidth() - 1;
 			} else if (x < 0)
 				x = 0;
 
 			// 1st order hold in y direction
-			y = (int) (py + vy * i * freqScaleFactor); 
-			
-			// Ensure we are not going off the edge of the bitmap with our extrapolated point
+			y = (int) (py + vy * i * freqScaleFactor);
+
+			// Ensure we are not going off the edge of the bitmap with our
+			// extrapolated point
 			if (y >= dataBitmap.getHeight()) {
 				y = dataBitmap.getHeight() - 1;
 			} else if (y < 0)
 				y = 0;
 
-			// Get the pixel value at this predicted position, convert it to a friction value, and store it
+			// Get the pixel value at this predicted position, convert it to a
+			// friction value, and store it
 			friction = pixelToFriction(dataBitmap.getPixel(x, y));
 
-			// Save the stored friction value into the buffer that will be sent to the TPad to be played back as real-time as possible
+			// Save the stored friction value into the buffer that will be sent
+			// to the TPad to be played back as real-time as possible
 			predictedPixels[i] = friction;
 		}
 
 	}
 
-	
-	// Main mapping to go from a pixel color to a friction value. OVERRIDE THIS FUNCTION FOR NEW MAPPINGS FROM COLOR TO FRICTION
+	// Main mapping to go from a pixel color to a friction value. OVERRIDE THIS
+	// FUNCTION FOR NEW MAPPINGS FROM COLOR TO FRICTION
 	public float pixelToFriction(int pixel) {
 		// Setup a Hue, Saturation, Value matrix
 		float[] hsv = new float[3];
-		
+
 		// Convert the RGB color in to HSV data and store it
 		Color.colorToHSV(pixel, hsv);
-		
-		// Return the Value of the color, which, generally, corresponds to the grayscale value of the color from 0-1
+
+		// Return the Value of the color, which, generally, corresponds to the
+		// grayscale value of the color from 0-1
 		return hsv[2];
 	}
 

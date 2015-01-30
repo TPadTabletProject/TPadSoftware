@@ -310,9 +310,8 @@ public abstract class TPadService extends IOIOService {
 			// D1 = 0 for SIN output (1 for triangle)
 			// D0 = 0 Reserved, must be 0
 
-			// Bit labels _______ 5432109876543210
-			short controlData = 0b0011000000000000;
-
+			short controlData = 0x3000;
+			
 			byte[] dataBytes = new byte[2];
 			dataBytes[0] = (byte) (controlData >>> 8);
 			dataBytes[1] = (byte) controlData; // LitteEndian style
@@ -324,12 +323,11 @@ public abstract class TPadService extends IOIOService {
 			Log.i(TAG, "Freq Out: " + String.valueOf(TPadFreq));
 			int freqInt = (int) (TPadFreq / FGN_MCLK * maxFgnOutput); // This is a fraction of the mclk, which is 4MHz
 
-			// ________________________5432109876543210________________5432109876543210
-			short lsbData = (short) (0b0100000000000000 | (freqInt & 0b0011111111111111)); // Only take the first 14 bits of the 28 bit number
+			short lsbData = (short) (0x4000 | (freqInt & 0x3FFF)); // Only take the first 14 bits of the 28 bit number
 			dataBytes[0] = (byte) (lsbData >>> 8);
 			dataBytes[1] = (byte) lsbData;
 
-			short msbData = (short) (0b0100000000000000 | (freqInt >>> 14)); // Only take the last 14 bits of the 28 bit number
+			short msbData = (short) (0x4000  | (freqInt >>> 14)); // Only take the last 14 bits of the 28 bit number
 			dataBytes[2] = (byte) (msbData >>> 8);
 			dataBytes[3] = (byte) msbData;
 
@@ -354,12 +352,11 @@ public abstract class TPadService extends IOIOService {
 		Log.i(TAG, "Freq Out: " + String.valueOf(newFreq));
 		int freqInt = (int) (newFreq / FGN_MCLK * maxFgnOutput); // This is a fraction of the mclk, which is 4MHz
 
-		// ________________________5432109876543210________________5432109876543210
-		short lsbData = (short) (0b0100000000000000 | (freqInt & 0b0011111111111111)); // Only take the first 14 bits of the 28 bit number
+		short lsbData = (short) (0x4000 | (freqInt & 0x3FFF)); // Only take the first 14 bits of the 28 bit number
 		dataBytes[0] = (byte) (lsbData >>> 8);
 		dataBytes[1] = (byte) lsbData;
 
-		short msbData = (short) (0b0100000000000000 | (freqInt >>> 14)); // Only take the last 14 bits of the 28 bit number
+		short msbData = (short) (0x4000 | (freqInt >>> 14)); // Only take the last 14 bits of the 28 bit number
 		dataBytes[2] = (byte) (msbData >>> 8);
 		dataBytes[3] = (byte) msbData;
 
@@ -568,9 +565,12 @@ public abstract class TPadService extends IOIOService {
 			case TPadMessage.CALIBRATE_TPAD:
 				try {
 					looper.calibrate();
-				} catch (ConnectionLostException | InterruptedException e1) {
+				} catch (InterruptedException e1) {
 					Log.i(TAG, "Connection lost during calibration");
 					e1.printStackTrace();
+				}	catch (ConnectionLostException e2) {
+					Log.i(TAG, "Connection lost during calibration");
+					e2.printStackTrace();
 				}
 				break;
 

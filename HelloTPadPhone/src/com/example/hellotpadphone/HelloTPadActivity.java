@@ -57,6 +57,7 @@ public class HelloTPadActivity extends Activity {
 	protected void onCreate(Bundle savedInstanceState) {
 				
 		super.onCreate(savedInstanceState);
+		
 		setContentView(R.layout.activity_hello_tpad);
 
 		// Get TPad reference from the TPad Implementation Library
@@ -67,6 +68,7 @@ public class HelloTPadActivity extends Activity {
 		// Set the background color of the view to blue
 		basicView.setBackgroundColor(Color.BLUE);
 
+				
 		basicView.setOnTouchListener(new View.OnTouchListener() {
 			@Override
 			public boolean onTouch(View view, MotionEvent event) {
@@ -138,7 +140,7 @@ public class HelloTPadActivity extends Activity {
 		fricView.setTpad(mTpad);
 		
 		// Load an image from resources
-		Bitmap defaultBitmap = BitmapFactory.decodeResource(getResources(), R.drawable.testimage);
+		Bitmap defaultBitmap = BitmapFactory.decodeResource(getResources(), R.drawable.spacialgrad);
 		
 		// Set the friction data bitmap to the test image
 		fricView.setDataBitmap(defaultBitmap);
