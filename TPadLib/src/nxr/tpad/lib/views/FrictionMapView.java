@@ -51,7 +51,7 @@ public class FrictionMapView extends View {
 	private boolean dataDisplayed = true;
 
 	// Local reference to TPad object
-	public TPad mTpad;
+	private TPad mTpad;
 
 	// Holders of Haptic data
 	public Bitmap dataBitmap;
@@ -111,6 +111,12 @@ public class FrictionMapView extends View {
 
 	// Called by creating activity to initialize the local TPad reference object
 	public void setTpad(TPad tpad) {
+		try {
+			tpad.toString();
+		} catch (NullPointerException ex) {
+			Log.w("FrictionMapView", "Warning: This view is being passed a null tpad! Expect no friction!");
+			ex.printStackTrace();
+		}
 		mTpad = tpad;
 	}
 
@@ -260,8 +266,17 @@ public class FrictionMapView extends View {
 			// predictedPixels with these values
 			predictPixels();
 
-			// Send the predicted values to the tpad as an array
-			mTpad.sendFrictionBuffer(predictedPixels);
+			try {
+				// Send the predicted values to the tpad as an array
+				mTpad.sendFrictionBuffer(predictedPixels);
+			} catch (NullPointerException ex) {
+				Log.e("FrictionMapView", "NullPointerException encountered when sending predictedPixels to Tpad");
+				if(predictedPixels == null)
+					Log.e("TPad", "FrictionMapView Error: predictedPixels is null, causing NullPointerException and preventing haptics");
+				if(mTpad == null)
+					Log.e("TPad", "FrictionMapView Error: Tpad is not set, or is set to null, causing NullPointerException and preventing haptics");
+				ex.printStackTrace();
+			}
 
 			break;
 
@@ -273,6 +288,8 @@ public class FrictionMapView extends View {
 		case MotionEvent.ACTION_CANCEL:
 			// Recycle velocity tracker on a cancel event
 			vTracker.recycle();
+			//set to null after recycle to prevent illegal state
+			vTracker = null;
 			break;
 		}
 
