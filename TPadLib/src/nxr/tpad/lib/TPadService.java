@@ -67,7 +67,8 @@ import android.util.Log;
 public abstract class TPadService extends IOIOService {
 
 	private final String TAG = "TPadPhoneLib";
-	public final static int BUFFER_SIZE = 6250; // enough buffer for a 1 hz signal
+	public final static int BUFFER_SIZE = 6250; // enough buffer for a 1 hz
+												// signal
 	public final static long OUTPUT_SAMPLE_RATE = 6250; // 6.250kHz output rate
 
 	private static float TPadValue;
@@ -81,7 +82,8 @@ public abstract class TPadService extends IOIOService {
 	private double FGN_MCLK = 4000000l; // 4MHz onboard precision oscillator
 	private int cueWidth = (int) (62500 / OUTPUT_SAMPLE_RATE);
 
-	private SpiMaster spiBus_; // Controls function generator and the DAC on the same SPI
+	private SpiMaster spiBus_; // Controls function generator and the DAC on the
+								// same SPI
 
 	private final int SS_FGN_PIN = 4; // IOIO Pin 32, PIC Pin 12
 
@@ -97,7 +99,8 @@ public abstract class TPadService extends IOIOService {
 
 	private short maxPwmOutput = (short) (1.2 / (3.3 / 2) * 512);
 
-	private int maxFgnOutput = (int) Math.pow(2, 28); // This represents a 4MHz output max!
+	private int maxFgnOutput = (int) Math.pow(2, 28); // This represents a 4MHz
+														// output max!
 
 	class Looper extends BaseIOIOLooper {
 		private DigitalOutput led_;
@@ -107,10 +110,11 @@ public abstract class TPadService extends IOIOService {
 		private Sequencer.ChannelCue[] cue_ = new Sequencer.ChannelCue[] { pwmCueChannel_ };
 		private Sequencer sequencer_;
 
-		double timeoutTimer;
 		double loopTimer;
 		double lastloop;
-		int timeoutMillis = 1000;
+		double sleepTimer;
+		int timeoutMillis = 60000;
+		private Boolean isActive = true;
 
 		public int tpadConnected = 0;
 
@@ -121,7 +125,11 @@ public abstract class TPadService extends IOIOService {
 
 			mute_ = ioio_.openDigitalOutput(MUTE, false);
 
-			final ChannelConfigPwmPosition pwmConfig = new Sequencer.ChannelConfigPwmPosition(Sequencer.Clock.CLK_16M, 512, 0, new DigitalOutput.Spec(PWM_OUT)); // 1/(62.5nS*512) = 62500 pwm freq
+			final ChannelConfigPwmPosition pwmConfig = new Sequencer.ChannelConfigPwmPosition(Sequencer.Clock.CLK_16M, 512, 0, new DigitalOutput.Spec(PWM_OUT)); // 1/(62.5nS*512)
+																																									// =
+																																									// 62500
+																																									// pwm
+																																									// freq
 
 			final ChannelConfig[] config = new ChannelConfig[] { pwmConfig };
 
@@ -148,47 +156,35 @@ public abstract class TPadService extends IOIOService {
 
 			Thread.sleep(100);
 
+			sleepTimer = System.currentTimeMillis();
+
 			mute_.write(true);
 		}
 
 		@Override
 		public void loop() throws ConnectionLostException, InterruptedException {
 
-			lastloop = loopTimer;
-			loopTimer = System.nanoTime();
+			
+				if (isActive) {
 
-			if (tpadConnected == 0) {
-				tpadConnected = 1;
-			}
+					Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_DISPLAY + Process.THREAD_PRIORITY_LESS_FAVORABLE);
 
-			synchronized (tpadFrictionBuffer) {
+					lastloop = loopTimer;
+					loopTimer = System.nanoTime();
 
-				ioio_.beginBatch();
-
-				if (tpadFrictionBuffer.hasRemaining()) {
-
-					led_.write(false);
-
-					for (int i = 0; i < 10; i++) {
-						if (tpadFrictionBuffer.hasRemaining()) {
-							TPadValue = tpadFrictionBuffer.get();
-							push(TPadValue);
-						} else {
-							ioio_.endBatch();
-							Log.i(TAG, "Early Return, loop: " + String.valueOf(i));
-							return;
-						}
+					if (tpadConnected == 0) {
+						tpadConnected = 1;
 					}
 
-				} else if (textureOn) {
+					synchronized (tpadFrictionBuffer) {
 
-					synchronized (tpadVibrationBuffer) {
-						if (tpadVibrationBuffer.hasRemaining()) {
-							tpadFrictionBuffer.clear();
-							tpadFrictionBuffer.put(tpadVibrationBuffer);
-							tpadFrictionBuffer.flip();
-						} else {
-							tpadFrictionBuffer.rewind();
+						ioio_.beginBatch();
+
+						if (tpadFrictionBuffer.hasRemaining()) {
+							
+							
+							sleepTimer = System.currentTimeMillis();
+
 							led_.write(false);
 
 							for (int i = 0; i < 10; i++) {
@@ -197,32 +193,72 @@ public abstract class TPadService extends IOIOService {
 									push(TPadValue);
 								} else {
 									ioio_.endBatch();
-									// Log.i(TAG, "Early Return, loop: " + String.valueOf(i));
+									Log.i(TAG, "Early Return, loop: " + String.valueOf(i));
 									return;
 								}
 							}
 
+						} else if (textureOn) {
+
+							synchronized (tpadVibrationBuffer) {
+								if (tpadVibrationBuffer.hasRemaining()) {
+									tpadFrictionBuffer.clear();
+									tpadFrictionBuffer.put(tpadVibrationBuffer);
+									tpadFrictionBuffer.flip();
+								} else {
+									tpadFrictionBuffer.rewind();
+									led_.write(false);
+
+									for (int i = 0; i < 10; i++) {
+										if (tpadFrictionBuffer.hasRemaining()) {
+											TPadValue = tpadFrictionBuffer.get();
+											push(TPadValue);
+										} else {
+											ioio_.endBatch();
+											// Log.i(TAG, "Early Return, loop: "
+											// +
+											// String.valueOf(i));
+											return;
+										}
+									}
+
+								}
+
+							}
+						} else {
+
+							led_.write(true);
+
 						}
 
+						if (freq != TPadFreq) {
+							sendNewFreq(TPadFreq);
+							freq = TPadFreq;
+						}
+
+						ioio_.endBatch();
 					}
+
+					// wait until the end of our refresh period. Ensures more
+					// precise timings
+					while ((System.nanoTime()) < (loopTimer + 1.6 * 1000000.0)) {
+
+					}
+
+					if ((System.currentTimeMillis() - sleepTimer) > timeoutMillis) {
+						isActive = false;
+					}
+					
+
 				} else {
-					led_.write(true);
-
+					Process.setThreadPriority(Process.THREAD_PRIORITY_LOWEST);
+					Thread.sleep(1000);
+					Log.i(TAG, "Gong to Sleep");
+					if(tpadFrictionBuffer.hasRemaining()){
+						isActive = true;
+					}
 				}
-
-				if (freq != TPadFreq) {
-					sendNewFreq(TPadFreq);
-					freq = TPadFreq;
-				}
-
-				ioio_.endBatch();
-			}
-
-			// wait until the end of our refresh period. Ensures more precise timings
-			while ((System.nanoTime()) < (loopTimer + 1.6 * 1000000.0)) {
-
-			}
-
+			
 		}
 
 		@Override
@@ -231,6 +267,7 @@ public abstract class TPadService extends IOIOService {
 			super.disconnected();
 		}
 
+		
 		private void push(float value) throws ConnectionLostException, InterruptedException {
 
 			float reciprocal = (-1f * (value * tpadScale - .5f) + .5f);
@@ -260,7 +297,7 @@ public abstract class TPadService extends IOIOService {
 			float tempScale = looper.tpadScale;
 			looper.tpadScale = 1;
 			push(.9f);
-			
+
 			for (int i = 0; i < testFreqs.length; i++) {
 
 				testFreqs[i] = (37000 + i * (span) / testFreqs.length);
@@ -269,10 +306,10 @@ public abstract class TPadService extends IOIOService {
 				adcAvg = 0;
 				for (int j = 0; j < 100; j++) {
 					adcAvg = adcAvg + in.getVoltage();
-					
+
 				}
 				adcIn[i] = adcAvg;
-			
+
 				Log.i(TAG, "ADC read val: " + String.valueOf(adcIn[i]) + " " + String.valueOf((37000 + i * (span) / testFreqs.length)));
 				if (i > 0) {
 					if (adcIn[i] > adcIn[topFreqIndex]) {
@@ -298,7 +335,8 @@ public abstract class TPadService extends IOIOService {
 
 			// Begin by setting the 16 bit control register.
 			// D15 = D14 = 0 to set the control register
-			// D13 = 1 allows us to load a complete 28 bit word in two 14 bit writes
+			// D13 = 1 allows us to load a complete 28 bit word in two 14 bit
+			// writes
 			// D12 = 1 but this is ignored since D13 is 1
 			// D11 = D10 = 0
 			// D9 = 0 (bits control FSELECT/PSELECT)
@@ -311,7 +349,7 @@ public abstract class TPadService extends IOIOService {
 			// D0 = 0 Reserved, must be 0
 
 			short controlData = 0x3000;
-			
+
 			byte[] dataBytes = new byte[2];
 			dataBytes[0] = (byte) (controlData >>> 8);
 			dataBytes[1] = (byte) controlData; // LitteEndian style
@@ -321,13 +359,31 @@ public abstract class TPadService extends IOIOService {
 			dataBytes = null;
 			dataBytes = new byte[4];
 			Log.i(TAG, "Freq Out: " + String.valueOf(TPadFreq));
-			int freqInt = (int) (TPadFreq / FGN_MCLK * maxFgnOutput); // This is a fraction of the mclk, which is 4MHz
+			int freqInt = (int) (TPadFreq / FGN_MCLK * maxFgnOutput); // This is
+																		// a
+																		// fraction
+																		// of
+																		// the
+																		// mclk,
+																		// which
+																		// is
+																		// 4MHz
 
-			short lsbData = (short) (0x4000 | (freqInt & 0x3FFF)); // Only take the first 14 bits of the 28 bit number
+			short lsbData = (short) (0x4000 | (freqInt & 0x3FFF)); // Only take
+																	// the first
+																	// 14 bits
+																	// of the 28
+																	// bit
+																	// number
 			dataBytes[0] = (byte) (lsbData >>> 8);
 			dataBytes[1] = (byte) lsbData;
 
-			short msbData = (short) (0x4000  | (freqInt >>> 14)); // Only take the last 14 bits of the 28 bit number
+			short msbData = (short) (0x4000 | (freqInt >>> 14)); // Only take
+																	// the last
+																	// 14 bits
+																	// of the 28
+																	// bit
+																	// number
 			dataBytes[2] = (byte) (msbData >>> 8);
 			dataBytes[3] = (byte) msbData;
 
@@ -350,13 +406,24 @@ public abstract class TPadService extends IOIOService {
 		byte[] dataBytes = new byte[4];
 
 		Log.i(TAG, "Freq Out: " + String.valueOf(newFreq));
-		int freqInt = (int) (newFreq / FGN_MCLK * maxFgnOutput); // This is a fraction of the mclk, which is 4MHz
+		int freqInt = (int) (newFreq / FGN_MCLK * maxFgnOutput); // This is a
+																	// fraction
+																	// of the
+																	// mclk,
+																	// which is
+																	// 4MHz
 
-		short lsbData = (short) (0x4000 | (freqInt & 0x3FFF)); // Only take the first 14 bits of the 28 bit number
+		short lsbData = (short) (0x4000 | (freqInt & 0x3FFF)); // Only take the
+																// first 14 bits
+																// of the 28 bit
+																// number
 		dataBytes[0] = (byte) (lsbData >>> 8);
 		dataBytes[1] = (byte) lsbData;
 
-		short msbData = (short) (0x4000 | (freqInt >>> 14)); // Only take the last 14 bits of the 28 bit number
+		short msbData = (short) (0x4000 | (freqInt >>> 14)); // Only take the
+																// last 14 bits
+																// of the 28 bit
+																// number
 		dataBytes[2] = (byte) (msbData >>> 8);
 		dataBytes[3] = (byte) msbData;
 
@@ -365,6 +432,7 @@ public abstract class TPadService extends IOIOService {
 	}
 
 	public void sendTPad(float f) {
+		
 		synchronized (tpadFrictionBuffer) {
 			textureOn = false;
 			tpadFrictionBuffer.clear();
@@ -375,6 +443,7 @@ public abstract class TPadService extends IOIOService {
 	}
 
 	public void sendTPadBuffer(float[] buffArray) {
+		
 		synchronized (tpadFrictionBuffer) {
 			textureOn = false;
 			tpadFrictionBuffer.clear();
@@ -384,7 +453,6 @@ public abstract class TPadService extends IOIOService {
 	}
 
 	public void sendVibration(int type, float freq, float amp) {
-
 		int periodSamps = (int) ((1 / freq) * OUTPUT_SAMPLE_RATE);
 
 		synchronized (tpadVibrationBuffer) {
@@ -458,11 +526,13 @@ public abstract class TPadService extends IOIOService {
 	}
 
 	/*
-	 * public void sendTPadDualTexture(int type1, float freq1, float amp1, int type2, float freq2, float amp2) {
+	 * public void sendTPadDualTexture(int type1, float freq1, float amp1, int
+	 * type2, float freq2, float amp2) {
 	 * 
 	 * float minfreq = Math.min(freq1, freq2);
 	 * 
-	 * int periodSamps = (int) ((1 / minfreq) * OUTPUT_SAMPLE_RATE); float[] tempArray = new float[periodSamps];
+	 * int periodSamps = (int) ((1 / minfreq) * OUTPUT_SAMPLE_RATE); float[]
+	 * tempArray = new float[periodSamps];
 	 * 
 	 * float tp = 0;
 	 * 
@@ -472,11 +542,13 @@ public abstract class TPadService extends IOIOService {
 	 * 
 	 * for (int i = 0; i < periodSamps; i++) {
 	 * 
-	 * tp = (float) ((1 + Math.sin(2 * Math.PI * freq1 * i / OUTPUT_SAMPLE_RATE)) / 2f); tempArray[i] = amp1 * tp;
+	 * tp = (float) ((1 + Math.sin(2 * Math.PI * freq1 * i /
+	 * OUTPUT_SAMPLE_RATE)) / 2f); tempArray[i] = amp1 * tp;
 	 * 
 	 * }
 	 * 
-	 * break; case TPadVibration.SAWTOOTH: for (int i = 0; i < periodSamps; i++) { tempArray[i] = amp1 * (i / periodSamps);
+	 * break; case TPadVibration.SAWTOOTH: for (int i = 0; i < periodSamps; i++)
+	 * { tempArray[i] = amp1 * (i / periodSamps);
 	 * 
 	 * } break;
 	 * 
@@ -484,7 +556,8 @@ public abstract class TPadService extends IOIOService {
 	 * 
 	 * for (int i = 0; i < periodSamps; i++) {
 	 * 
-	 * tp = (float) ((1 + Math.sin(2 * Math.PI * freq1 * i / OUTPUT_SAMPLE_RATE)) / 2f);
+	 * tp = (float) ((1 + Math.sin(2 * Math.PI * freq1 * i /
+	 * OUTPUT_SAMPLE_RATE)) / 2f);
 	 * 
 	 * if (tp > (.5)) { tempArray[i] = amp1;
 	 * 
@@ -502,11 +575,13 @@ public abstract class TPadService extends IOIOService {
 	 * 
 	 * for (int i = 0; i < periodSamps; i++) {
 	 * 
-	 * tp = (float) ((1 + Math.sin(2 * Math.PI * freq2 * i / OUTPUT_SAMPLE_RATE)) / 2f); tempArray[i] *= amp2 * tp;
+	 * tp = (float) ((1 + Math.sin(2 * Math.PI * freq2 * i /
+	 * OUTPUT_SAMPLE_RATE)) / 2f); tempArray[i] *= amp2 * tp;
 	 * 
 	 * }
 	 * 
-	 * break; case TPadVibration.SAWTOOTH: for (int i = 0; i < periodSamps; i++) { tempArray[i] *= amp2 * (i / periodSamps);
+	 * break; case TPadVibration.SAWTOOTH: for (int i = 0; i < periodSamps; i++)
+	 * { tempArray[i] *= amp2 * (i / periodSamps);
 	 * 
 	 * } break;
 	 * 
@@ -514,7 +589,8 @@ public abstract class TPadService extends IOIOService {
 	 * 
 	 * for (int i = 0; i < periodSamps; i++) {
 	 * 
-	 * tp = (float) ((1 + Math.sin(2 * Math.PI * freq2 * i / OUTPUT_SAMPLE_RATE)) / 2f);
+	 * tp = (float) ((1 + Math.sin(2 * Math.PI * freq2 * i /
+	 * OUTPUT_SAMPLE_RATE)) / 2f);
 	 * 
 	 * if (tp > (.5)) { tempArray[i] *= amp2;
 	 * 
@@ -568,7 +644,7 @@ public abstract class TPadService extends IOIOService {
 				} catch (InterruptedException e1) {
 					Log.i(TAG, "Connection lost during calibration");
 					e1.printStackTrace();
-				}	catch (ConnectionLostException e2) {
+				} catch (ConnectionLostException e2) {
 					Log.i(TAG, "Connection lost during calibration");
 					e2.printStackTrace();
 				}
@@ -637,11 +713,14 @@ public abstract class TPadService extends IOIOService {
 			/*
 			 * case TPadMessage.SEND_TPAD_DUAL_TEXTURE: data = msg.getData();
 			 * 
-			 * int dtype = textureVals[data.getInt("type")]; float dfreq = data.getFloat("freq"); float damp = data.getFloat("amp");
+			 * int dtype = textureVals[data.getInt("type")]; float dfreq =
+			 * data.getFloat("freq"); float damp = data.getFloat("amp");
 			 * 
-			 * int dtype2 = textureVals[data.getInt("type2")]; float dfreq2 = data.getFloat("freq2"); float damp2 = data.getFloat("amp2");
+			 * int dtype2 = textureVals[data.getInt("type2")]; float dfreq2 =
+			 * data.getFloat("freq2"); float damp2 = data.getFloat("amp2");
 			 * 
-			 * sendTPadDualTexture(dtype, dfreq, damp, dtype2, dfreq2, damp2); break;
+			 * sendTPadDualTexture(dtype, dfreq, damp, dtype2, dfreq2, damp2);
+			 * break;
 			 */
 
 			case TPadMessage.SEND_TPAD:
@@ -711,5 +790,4 @@ public abstract class TPadService extends IOIOService {
 		return START_REDELIVER_INTENT;
 	}
 
-	
 }

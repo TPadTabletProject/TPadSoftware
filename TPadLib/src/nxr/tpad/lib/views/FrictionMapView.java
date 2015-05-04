@@ -29,6 +29,14 @@
 
 package nxr.tpad.lib.views;
 
+import org.opencv.android.BaseLoaderCallback;
+import org.opencv.android.LoaderCallbackInterface;
+import org.opencv.android.OpenCVLoader;
+import org.opencv.android.Utils;
+import org.opencv.core.CvType;
+import org.opencv.core.Mat;
+import org.opencv.imgproc.Imgproc;
+
 import ioio.lib.spi.Log;
 import nxr.tpad.lib.TPad;
 import nxr.tpad.lib.TPadService;
@@ -53,10 +61,20 @@ public class FrictionMapView extends View {
 	// Local reference to TPad object
 	public TPad mTpad;
 
+	private Context mainContext;
+
 	// Holders of Haptic data
 	public Bitmap dataBitmap;
 	public Bitmap displayBitmap;
 	public Paint dataPaint;
+
+	private Mat gradMatx;
+	private Mat gradMaty;
+
+	public static final int DIRECT = 1;
+	public static final int GRADIENT = 2;
+
+	public int renderType = DIRECT;
 
 	// Scale factor for shrinking incoming bitmaps to proper size of the view
 	// class
@@ -85,16 +103,19 @@ public class FrictionMapView extends View {
 
 	String TAG = "FrictionMapView";
 
+	private boolean openCvLoaded = false;
+
 	// Main Constructor for FrictionMapView
 	public FrictionMapView(Context context, AttributeSet attrs) {
 		super(context, attrs);
 
-		height = 10;
-		width = 10;
-		
+		mainContext = context;
+		height = 1000;
+		width = 1000;
+
 		// Set default bitmap to 10x10 square, just so we don't get null pointer
 		// exceptions
-		Bitmap defaultBitmap = Bitmap.createBitmap(10, 10,Bitmap.Config.ARGB_8888);
+		Bitmap defaultBitmap = Bitmap.createBitmap(10, 10, Bitmap.Config.ARGB_8888);
 
 		setDataBitmap(defaultBitmap);
 		setDisplayBitmap(defaultBitmap);
@@ -107,6 +128,70 @@ public class FrictionMapView extends View {
 		dataPaint.setColor(Color.MAGENTA);
 		dataPaint.setAntiAlias(true);
 
+		if (!this.isInEditMode()) {
+			Log.i(TAG, "Trying to load OpenCV library");
+			if (!OpenCVLoader.initAsync(OpenCVLoader.OPENCV_VERSION_2_4_7, mainContext, mOpenCVCallBack)) {
+				Log.e(TAG, "Cannot connect to OpenCV Manager");
+			}
+		}
+
+	}
+
+	private BaseLoaderCallback mOpenCVCallBack = new BaseLoaderCallback(getContext()) {
+		@Override
+		public void onManagerConnected(int status) {
+			switch (status) {
+			case LoaderCallbackInterface.SUCCESS: {
+				Log.e("TEST", "Connected to OpenCV Manager");
+
+				openCvLoaded = true;
+				computeGradients();
+			}
+				break;
+			default: {
+				super.onManagerConnected(status);
+			}
+				break;
+			}
+		}
+	};
+
+	private void computeGradients() {
+
+		double delta = 127.5;
+		Mat tempMat = new Mat(dataBitmap.getHeight(), dataBitmap.getWidth(), CvType.CV_8UC4);
+		gradMatx = new Mat(dataBitmap.getHeight(), dataBitmap.getWidth(), CvType.CV_8UC4);
+		gradMaty = new Mat(dataBitmap.getHeight(), dataBitmap.getWidth(), CvType.CV_8UC4);
+		Utils.bitmapToMat(dataBitmap, tempMat);
+		Imgproc.cvtColor(tempMat, tempMat, Imgproc.COLOR_RGBA2GRAY);
+		Utils.matToBitmap(tempMat, dataBitmap);
+
+		// x direction gradient
+		Imgproc.Sobel(tempMat, gradMatx, tempMat.depth(), 1, 0, 5, .5, delta);
+		// Imgproc.GaussianBlur(gradMatx, gradMatx, new Size(7, 7), 10);
+		// Imgproc.GaussianBlur(gradMatx, gradMatx, new Size(11, 11), 20);
+		// Utils.matToBitmap(gradMatx, gradXBitmap);
+
+		// y direction gradient
+		Imgproc.Sobel(tempMat, gradMaty, tempMat.depth(), 0, 1, 5, .5, delta);
+		// Imgproc.GaussianBlur(gradMaty, gradMaty, new Size(7, 7), 10);
+		// Imgproc.GaussianBlur(gradMaty, gradMaty, new Size(11, 11), 20);
+		// Utils.matToBitmap(gradMaty, gradYBitmap);
+	}
+
+	public void setRenderType(int type) {
+		renderType = type;
+
+		switch (type) {
+		case DIRECT:
+			break;
+		case GRADIENT:
+			if (openCvLoaded) {
+				computeGradients();
+			}
+			break;
+
+		}
 	}
 
 	// Called by creating activity to initialize the local TPad reference object
@@ -123,7 +208,11 @@ public class FrictionMapView extends View {
 		// reference copy won't be used, and it can then be destroyed.
 		dataBitmap = null;
 		dataBitmap = bmp.copy(Bitmap.Config.ARGB_8888, true);
-		
+
+		if (openCvLoaded && renderType == GRADIENT) {
+			computeGradients();
+		}
+
 		invalidate();
 
 	}
@@ -141,8 +230,8 @@ public class FrictionMapView extends View {
 		invalidate();
 
 	}
-	
-	private void resetScaleFactors(){
+
+	private void resetScaleFactors() {
 		hapticScaleFactor = dataBitmap.getWidth() / (float) width;
 		visualScaleFactor = displayBitmap.getWidth() / (float) width;
 	}
@@ -182,29 +271,31 @@ public class FrictionMapView extends View {
 				drawScaledBitmap(displayBitmap, canvas, visualScaleFactor);
 			}
 		}
+
 	}
 
 	private void drawScaledBitmap(Bitmap bit, Canvas can, float factor) {
 
-		Log.i(TAG, "Factor:" + String.valueOf(factor) + " Bitwidth:"+ String.valueOf(bit.getWidth()));
+		Log.i(TAG, "Factor:" + String.valueOf(factor) + " Bitwidth:" + String.valueOf(bit.getWidth()));
 
 		// Create a temporary bitmap that is a properly scaled version of the
 		// data Bitmap
-		Bitmap tempBitmap = Bitmap.createScaledBitmap(bit,(int) (bit.getWidth() / factor),(int) (bit.getHeight() / factor), false);
+		Bitmap tempBitmap = Bitmap.createScaledBitmap(bit, (int) (bit.getWidth() / factor), (int) (bit.getHeight() / factor), false);
 		can.drawBitmap(tempBitmap, 0, 0, dataPaint);
 
 		tempBitmap.recycle();
 
 	}
+
 	// Method getting called when the view changes dimentions. Used in the
 	// background for most purposes.
 	@Override
 	protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
 		width = MeasureSpec.getSize(widthMeasureSpec);
 		height = MeasureSpec.getSize(heightMeasureSpec);
-		Log.i(TAG, "New Measure: " +String.valueOf(width)+"w "+String.valueOf(height)+"h");
-		
-		resetScaleFactors();		
+		Log.i(TAG, "New Measure: " + String.valueOf(width) + "w " + String.valueOf(height) + "h");
+
+		resetScaleFactors();
 		super.onMeasure(widthMeasureSpec, heightMeasureSpec);
 	}
 
@@ -283,7 +374,7 @@ public class FrictionMapView extends View {
 	// to the TPad
 	public void predictPixels() {
 		// Local friction values
-		float friction;
+		float friction = 0;
 
 		// Local x,y values, based on most recent px, py
 		int x = (int) px;
@@ -317,9 +408,38 @@ public class FrictionMapView extends View {
 			} else if (y < 0)
 				y = 0;
 
-			// Get the pixel value at this predicted position, convert it to a
-			// friction value, and store it
-			friction = pixelToFriction(dataBitmap.getPixel(x, y));
+			switch (renderType) {
+			case DIRECT:
+				// Get the pixel value at this predicted position, convert it to
+				// a
+				// friction value, and store it
+				friction = pixelToFriction(dataBitmap.getPixel(x, y));
+				break;
+			case GRADIENT:
+				float vAvgx;
+				float vAvgy;
+				float vAvgMag;
+
+				double[] vals = new double[1];
+				vals = gradMatx.get(y, x);
+				int colorint = (int) vals[0];
+				float getX = (colorint) / 255;
+
+				vals = gradMaty.get(y, x);
+				colorint = (int) vals[0];
+				float getY = (colorint) / 255;
+
+				vAvgMag = (float) Math.sqrt(vx * vx + vy * vy);
+				vAvgx = (float) (vx / vAvgMag);
+				vAvgy = (float) (vy / vAvgMag);
+
+				float scale = (float) (Math.sqrt(2.)/2);
+
+				friction = scale * (-1f * ((getX - .5f) * vAvgx + (getY - .5f) * vAvgy)) + .5f;
+
+				break;
+
+			}
 
 			// Save the stored friction value into the buffer that will be sent
 			// to the TPad to be played back as real-time as possible

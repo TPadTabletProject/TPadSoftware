@@ -144,8 +144,7 @@ public class HelloTPadActivity extends Activity {
 		
 		// Set the friction data bitmap to the test image
 		fricView.setDataBitmap(defaultBitmap);
-		
-	
+			
 	}
 
 	@Override
